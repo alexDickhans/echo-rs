@@ -70,8 +70,8 @@ impl<T: RotarySensor> TankPoseTracking<T> {
 
         // Calculate a local displacement vector from the current position of the robot
         let local = Rotation2::new(
-            -self.heading.angle() + self.rng.sample(Normal::new(0.0, self.angle_noise).unwrap()),
-        ) * Vector2::new(-mean, 0.0);
+            self.heading.angle() + self.rng.sample(Normal::new(0.0, self.angle_noise).unwrap()),
+        ) * Vector2::new(mean, 0.0);
 
         // Create a new state representation without a angle(z) change
         // We do this because the IMU is more than accurate over the entire match
