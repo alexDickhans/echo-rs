@@ -1,12 +1,8 @@
-use core::time::Duration;
+use alloc::sync::Arc;
+use core::cell::RefCell;
 
-use vexide::{
-    core::println,
-    devices::adi::digital::LogicLevel,
-    prelude::{sleep, AdiDigitalOut, Controller},
-};
-
-use crate::state_machine::State;
+use command_rs::command::Command;
+use vexide::{devices::adi::digital::LogicLevel, prelude::AdiDigitalOut};
 
 pub struct GoalClamp {
     adi_solenoid: AdiDigitalOut,
@@ -17,28 +13,18 @@ impl GoalClamp {
         Self { adi_solenoid }
     }
 
-    pub async fn run(&mut self, mut state: impl State<(), LogicLevel>) {
-        state.init();
-
-        loop {
-            if let Some(command) = state.update(&()) {
-                println!("{:?}", command);
-                self.adi_solenoid.set_level(command).unwrap();
-            } else {
-                return;
-            }
-
-            sleep(Duration::from_millis(10)).await;
-        }
+    pub fn set_value(&mut self, level: LogicLevel) {
+        self.adi_solenoid.set_level(level).unwrap()
     }
 }
 
 pub struct GoalController<'a> {
-    pub controller: &'a Controller,
+    pub logic_level: LogicLevel,
+    pub goal_clamp: Arc<RefCell<GoalClamp>>,
 }
 
-impl<'a> State<(), LogicLevel> for GoalController<'a> {
-    fn update(&mut self, _: &()) -> Option<LogicLevel> {
-        Some(self.controller.button_a.level().unwrap_or(LogicLevel::High))
+impl<'a> Command for GoalController<'a> {
+    fn initialize(&mut self) {
+        self.goal_clamp.borrow_mut().set_value(self.logic_level);
     }
 }

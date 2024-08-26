@@ -1,43 +1,45 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::{f64::consts::TAU, ops::Add, time::Duration};
+use core::cell::RefCell;
 
+use command_rs::command::Command;
+use command_rs::subsystem::AnySubsystem;
 use nalgebra::{Matrix3, Vector2};
-use uom::si::f64::{AngularVelocity, Length};
+use uom::si::f64::Length;
 use vexide::{
     core::{sync::Mutex, time::Instant},
-    devices::{smart::GpsSensor, PortError},
+    devices::{PortError, smart::GpsSensor},
     prelude::*,
 };
 
 use crate::{
     actuator::{motor_group::MotorGroup, telemetry::Telemetry},
     config::{
-        distance_threshold, localization_min_update_distance, ANGLE_NOISE, DRIVE_NOISE, FIELD_MAX,
-        LINE_SENSOR_THRESHOLD, LOCALIZATION_MIN_UPDATE_INTERVAL, NUM_PARTICLES, TELEMETRY_ENABLED,
+        ANGLE_NOISE, distance_threshold, DRIVE_NOISE, FIELD_MAX, LINE_SENSOR_THRESHOLD,
+        localization_min_update_distance, LOCALIZATION_MIN_UPDATE_INTERVAL, NUM_PARTICLES, TELEMETRY_ENABLED,
     },
     localization::{
-        localization::{particle_filter::ParticleFilter, Localization, StateRepresentation},
+        localization::{Localization, particle_filter::ParticleFilter, StateRepresentation},
         predict::tank_pose_tracking::TankPoseTracking,
         sensor::{distance::WallDistanceSensor, line_tracker::LineTrackerSensor},
     },
     sensor::rotary::TrackingWheel,
-    state_machine::*,
 };
 
 /// Example implementation of a drivetrain subsystem.
 #[allow(dead_code)]
 pub struct Drivetrain {
-    left_motor: Arc<Mutex<MotorGroup>>,
-    right_motor: Arc<Mutex<MotorGroup>>,
-    localization: Arc<Mutex<ParticleFilter<NUM_PARTICLES>>>,
+    left_motor: Arc<RefCell<MotorGroup>>,
+    right_motor: Arc<RefCell<MotorGroup>>,
+    localization: Arc<RefCell<ParticleFilter<NUM_PARTICLES>>>,
     _localization_task: Task<()>,
     telemetry: Telemetry,
 }
 
 impl Drivetrain {
     pub async fn new(
-        left_motor: Arc<Mutex<MotorGroup>>,
-        right_motor: Arc<Mutex<MotorGroup>>,
+        left_motor: Arc<RefCell<MotorGroup>>,
+        right_motor: Arc<RefCell<MotorGroup>>,
         imu: InertialSensor,
         tracking_wheel_diameter: Length,
         drive_ratio: f64,
@@ -46,7 +48,7 @@ impl Drivetrain {
         line_sensors: Vec<(AdiLineTracker, Vector2<f64>)>,
         gps: Result<GpsSensor, PortError>,
     ) -> Self {
-        let localization = Arc::new(Mutex::new(ParticleFilter::new(
+        let localization = Arc::new(RefCell::new(ParticleFilter::new(
             TankPoseTracking::new(
                 TrackingWheel::new(
                     left_motor.clone(),
@@ -62,13 +64,13 @@ impl Drivetrain {
                 DRIVE_NOISE,
                 ANGLE_NOISE,
             )
-            .await,
+                .await,
             LOCALIZATION_MIN_UPDATE_INTERVAL,
             localization_min_update_distance(),
         )));
 
         {
-            let mut loc_lock = localization.lock().await;
+            let mut loc_lock = localization.borrow_mut();
 
             for (sensor, pose) in distance_sensors {
                 loc_lock.add_sensor(WallDistanceSensor::new(sensor, pose));
@@ -105,15 +107,15 @@ impl Drivetrain {
                 loop {
                     let now = Instant::now();
 
-                    {
-                        let mut loc = localization.lock().await;
+                    let mut loc = localization.borrow_mut();
 
-                        loc.update().await;
+                    loc.update().await;
 
-                        if TELEMETRY_ENABLED {
-                            telemetry.send_json(loc.get_estimates().to_vec()).await;
-                            telemetry.send("\n".as_bytes()).await;
-                        }
+                    drop(loc);
+
+                    if TELEMETRY_ENABLED {
+                        telemetry.send_json(loc.get_estimates().to_vec()).await;
+                        telemetry.send("\n".as_bytes()).await;
                     }
 
                     sleep_until(now.add(Duration::from_millis(10))).await;
@@ -124,80 +126,40 @@ impl Drivetrain {
         }
     }
 
-    pub async fn init_norm(&mut self, mean: &StateRepresentation, covariance: &Matrix3<f64>) {
-        self.localization.lock().await.init_norm(mean, covariance);
+    pub fn init_norm(&mut self, mean: &StateRepresentation, covariance: &Matrix3<f64>) {
+        self.localization.borrow_mut().init_norm(mean, covariance);
     }
 
-    pub async fn run_velocity(
-        &mut self,
-        mut state: impl State<StateRepresentation, (AngularVelocity, AngularVelocity)>,
-    ) {
-        state.init();
-        loop {
-            let position;
-
-            {
-                position = self.localization.lock().await.pose_estimate();
-            }
-
-            if let Some(output) = state.update(&position) {
-                let now = Instant::now();
-
-                self.left_motor.lock().await.set_velocity(output.0);
-                self.right_motor.lock().await.set_velocity(output.1);
-
-                sleep_until(now.add(Duration::from_millis(10))).await;
-            } else {
-                return;
-            }
-        }
+    pub fn get_pose(&self) -> StateRepresentation {
+        self.localization.borrow().pose_estimate()
     }
 
-    pub async fn run(&mut self, mut state: impl State<StateRepresentation, (f64, f64)>) {
-        state.init();
-        loop {
-            let position;
-
-            {
-                position = self.localization.lock().await.pose_estimate();
-            }
-
-            if let Some(output) = state.update(&position) {
-                let now = Instant::now();
-
-                // println!("updateD, {:?}", now);
-
-                self.left_motor.lock().await.set_voltage(output.0);
-                self.right_motor.lock().await.set_voltage(output.1);
-
-                sleep_until(now.add(Duration::from_millis(10))).await;
-            } else {
-                return;
-            }
-        }
-    }
+    pub fn move_
 }
 
 pub struct TankDrive<'a> {
+    drivetrain: Arc<RefCell<Drivetrain>>,
     controller: &'a Controller,
 }
 
 impl<'a> TankDrive<'a> {
-    pub fn new(controller: &'a Controller) -> Self {
-        TankDrive { controller }
+    pub fn new(drivetrain: Arc<RefCell<Drivetrain>>, controller: &'a Controller) -> Self {
+        TankDrive { drivetrain, controller }
     }
 }
 
-impl<'a> State<StateRepresentation, (f64, f64)> for TankDrive<'a> {
-    fn update(&mut self, _: &StateRepresentation) -> Option<(f64, f64)> {
-        Some((
-            self.controller.left_stick.y().ok()? as f64 * 12.0,
-            self.controller.right_stick.y().ok()? as f64 * 12.0,
-        ))
+impl<'a> Command for TankDrive<'a> {
+    fn execute(&mut self) {
+        todo!()
+    }
+
+    fn requirements(&self) -> &[AnySubsystem] {
+        &[self.drivetrain.clone().into()]
     }
 }
 
 pub struct VoltageDrive {
+    drivetrain: Arc<RefCell<Drivetrain>>,
     left_voltage: f64,
     right_voltage: f64,
 }
@@ -211,8 +173,12 @@ impl VoltageDrive {
     }
 }
 
-impl State<StateRepresentation, (f64, f64)> for VoltageDrive {
-    fn update(&mut self, _: &StateRepresentation) -> Option<(f64, f64)> {
-        Some((self.left_voltage as f64, self.right_voltage as f64))
+impl Command for VoltageDrive {
+    fn initialize(&mut self) {
+        self.drivetrain.borrow_mut().
+    }
+
+    fn requirements(&self) -> &[AnySubsystem] {
+        &[self.drivetrain.clone().into()]
     }
 }

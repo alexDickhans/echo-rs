@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
+use core::cell::RefCell;
 
 use uom::si::{f64::Length, length::meter};
-use vexide::core::sync::Mutex;
 
 use crate::actuator::motor_group::MotorGroup;
 
@@ -9,9 +9,9 @@ pub trait RotarySensor {
     async fn pos(&self) -> f64;
 }
 
-impl RotarySensor for Arc<Mutex<MotorGroup>> {
+impl RotarySensor for Arc<RefCell<MotorGroup>> {
     async fn pos(&self) -> f64 {
-        self.lock().await.position()
+        self.borrow().position()
     }
 }
 

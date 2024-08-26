@@ -3,10 +3,7 @@ use core::time::Duration;
 use uom::si::{angular_velocity::revolution_per_minute, f64::AngularVelocity};
 use vexide::prelude::{sleep, Controller, Motor, Position};
 
-use crate::{
-    config::{INTAKE_RATIO, LIFT_RATIO},
-    state_machine::State,
-};
+use crate::config::{INTAKE_RATIO, LIFT_RATIO};
 
 pub struct Intake {
     bottom: Motor,

@@ -27,3 +27,4 @@ rand_distr = { version = "0.4.3", default-features = false, features = ["alloc"]
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 serde = { version = "1.0.206", default-features = false, features = ["alloc", "derive"] }
 motion_profiling = { git = "https://github.com/alexDickhans/motion_profiling.git" }
+command-rs = { git = "https://github.com/alexDickhans/command-rs.git" }

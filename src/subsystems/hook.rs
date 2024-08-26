@@ -1,9 +1,5 @@
-use core::time::Duration;
-
 use uom::si::{angle::revolution, f64::Angle};
-use vexide::prelude::{sleep, Motor, Position};
-
-use crate::state_machine::State;
+use vexide::prelude::{Motor, Position};
 
 pub struct Hook {
     motor: Motor,
@@ -14,20 +10,10 @@ impl Hook {
         Self { motor }
     }
 
-    pub async fn run(&mut self, mut state: impl State<(), f64>) {
-        state.init();
-
-        loop {
-            if let Some(position) = state.update(&()) {
-                let _ = self
-                    .motor
-                    .set_position_target(Position::from_revolutions(position), 200);
-            } else {
-                return;
-            }
-
-            sleep(Duration::from_millis(10)).await;
-        }
+    pub fn set_position(&mut self, angle: Angle) {
+        self.motor
+            .set_position_target(Position::from_revolutions(angle.get::<revolution>()), 600)
+            .unwrap()
     }
 }
 

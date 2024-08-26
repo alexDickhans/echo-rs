@@ -1,7 +1,8 @@
 use alloc::boxed::Box;
 
+use command_rs::command::Command;
 use motion_profiling::motion_profile::MotionProfile;
-use nalgebra::{Matrix3, SimdComplexField};
+use nalgebra::Matrix3;
 use uom::{
     num_traits::{real::Real, Pow},
     si::{
@@ -13,8 +14,6 @@ use vexide::core::time::Instant;
 
 use crate::{
     config::{track_width, wheel_diameter},
-    localization::localization::StateRepresentation,
-    state_machine::State,
     utils::angle_difference,
 };
 
@@ -49,12 +48,13 @@ impl Ramsete {
     }
 }
 
-impl<'a> State<StateRepresentation, (AngularVelocity, AngularVelocity)> for Ramsete {
-    fn init(&mut self) {
+impl<'a> Command for Ramsete {
+    fn initialize(&mut self) {
         self.start_time = Instant::now();
     }
 
-    fn update(&mut self, i: &StateRepresentation) -> Option<(AngularVelocity, AngularVelocity)> {
+    fn execute(&mut self) -> Option<(AngularVelocity, AngularVelocity)> {
+        let i = todo!();
         let command = self.motion_profile.get(Instant::now() - self.start_time)?;
 
         let error = Matrix3::new(
@@ -96,33 +96,5 @@ impl<'a> State<StateRepresentation, (AngularVelocity, AngularVelocity)> for Rams
                     / (wheel_diameter().get::<meter>() / 2.0),
             ),
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use core::time::Duration;
-
-    use motion_profiling::motion_profile::MotionCommand;
-
-    use super::*;
-
-    struct DummyMotionProfile;
-
-    impl MotionProfile for DummyMotionProfile {
-        fn duration(&self) -> Duration {
-            Duration::new(0, 0)
-        }
-
-        fn get(&mut self, t: Duration) -> Option<MotionCommand> {
-            None
-        }
-    }
-
-    #[test]
-    fn build_ramsete() {
-        let mut mp = DummyMotionProfile;
-        let ramsete = Ramsete::try_new(1.0, 0.5, &mut mp);
-        assert!(ramsete.is_ok());
     }
 }

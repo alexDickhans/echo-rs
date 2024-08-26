@@ -10,10 +10,9 @@ extern crate uom;
 use alloc::{boxed::Box, ffi::CString, format, sync::Arc, vec};
 use core::{future::join, panic::PanicInfo, time::Duration};
 
-use futures::{select_biased, FutureExt};
+use futures::{FutureExt, select_biased};
 use motion_profiling::combined_mp::CombinedMP;
 use nalgebra::Matrix3;
-use subsystems::drivetrain::VoltageDrive;
 use uom::si::{angle::revolution, f64::Angle, length::meter};
 use vexide::{
     core::sync::Mutex,
@@ -25,11 +24,13 @@ use vexide::{
     prelude::*,
 };
 
+use subsystems::drivetrain::VoltageDrive;
+
 use crate::{
     actuator::{motor_group::MotorGroup, telemetry::Telemetry},
     config::{
-        get_distance_1_offset, get_distance_2_offset, get_distance_3_offset, get_gps_offset,
-        get_line_1_offset, track_width, wheel_diameter, DRIVE_RATIO,
+        DRIVE_RATIO, get_distance_1_offset, get_distance_2_offset, get_distance_3_offset,
+        get_gps_offset, get_line_1_offset, track_width, wheel_diameter,
     },
     localization::localization::StateRepresentation,
     motion_control::ramsete::Ramsete,
@@ -46,7 +47,6 @@ mod config;
 mod localization;
 mod motion_control;
 mod sensor;
-mod state_machine;
 mod subsystems;
 mod utils;
 
@@ -102,7 +102,7 @@ impl Robot {
             vec![(AdiLineTracker::new(peripherals.adi_b), get_line_1_offset())],
             GpsSensor::new(peripherals.port_11, get_gps_offset(), ((0.0, 0.0), 0.0)),
         )
-        .await;
+            .await;
 
         Self {
             drivetrain,
@@ -162,10 +162,10 @@ impl Compete for Robot {
                     serde_json::from_str(include_str!("../bins/paths/test.json")).unwrap(),
                     track_width().get::<meter>(),
                 )
-                .unwrap(),
+                    .unwrap(),
             ),
         )
-        .unwrap();
+            .unwrap();
 
         self.drivetrain.run_velocity(ramsete).await;
 
@@ -188,7 +188,7 @@ impl Compete for Robot {
         join!(self.goal_clamp.run(GoalController {
             controller: &mut self.controller_primary
         }))
-        .await;
+            .await;
     }
 }
 
